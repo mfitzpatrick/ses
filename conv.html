@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Simple Email Service</title>
+        <meta charset="utf-8" />
+        <meta name="description" content="A Simple Emailing Service displaying emails like SMSs">
+        <link rel="manifest" href="/manifest.json">
+    </head>
+    <body>
+        <header class="banner">
+            <h1>Simple Emailing Service</h1>
+            <label id="authenticated_email"></label>
+            <button id="logout_btn" style="display: none;">Logout</button>
+            <label id="chat_user"></label>
+        </header>
+
+        <section id="chat_section" class="list">
+            <template id="chat_template">
+                <div name="chat_entry" class="chat_entry">
+                    <div name="chat_text" class="chat_text"></div>
+                    <div><small name="chat_ts" class="chat_ts"></small></div>
+                </div>
+            </template>
+        </section>
+
+        <script type="text/javascript" src="/gapi-worker.js"></script>
+
+        <script type="text/javascript">
+            console.log("Document query string:", window.location.search);
+            var chat_user = URLSearchParams(window.location.search).get('user');
+            console.log("chat user is:", chat_user);
+            // Add a callback which updates the HTML of this page dynamically as data is added to
+            // the message object.
+            updateChatCallback(chat_user, function(msg, ts, is_sent) {
+                console.log("Adding new chat entry for:", email);
+                //update conversation_list object and add a new card
+                var template = document.querySelector("#chat_template");
+                var clone = template.content.cloneNode(true);
+                entry.querySelector("#chat_text").textContent = msg;
+                entry.querySelector("#chat_ts").textContent = ts;
+                //set styling based on whether this was sent or received
+                var entry = clone.querySelector("[name=chat_entry]");
+                if (is_sent) {
+                    entry.classList.add("msg_sent");
+                } else {
+                    entry.classList.add("msg_received");
+                }
+                document.querySelector("#chat_section").appendChild(clone);
+            });
+        </script>
+
+        <script async defer src="https://apis.google.com/js/api.js"
+            onload="this.onload=function(){};handleClientLoad()"
+            onreadystatechange="if (this.readyState === 'complete') this.onload()">
+        </script>
+
+        <script type="text/javascript">
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker.js')
+                .then(function(registration) {
+                    console.log('Registered:', registration);
+                })
+                .catch(function(error) {
+                    console.log('Registration failed:', error);
+                });
+            }
+        </script>
+    </body>
+</html>
+
+

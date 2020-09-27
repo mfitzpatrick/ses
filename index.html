@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Simple Email Service</title>
+        <meta charset="utf-8" />
+        <meta name="description" content="A Simple Emailing Service displaying emails like SMSs">
+        <link rel="manifest" href="/manifest.json">
+        <script src="/idb.js"></script>
+        <script src="/db.js"></script>
+    </head>
+    <body>
+        <header class="banner">
+            <h1>Simple Emailing Service</h1>
+            <label id="authenticated_email"></label>
+            <button id="logout_btn" style="display: none;">Logout</button>
+        </header>
+
+        <section id="conversation_list" class="list">
+            <template id="conversation_template">
+                <a name="conversation_card" class="thread_card" style="display: block;">
+                    <div name="conversation_name" class="thread_name"></div>
+                    <div><small name="conversation_ts" class="thread_ts"></small></div>
+                </a>
+            </template>
+        </section>
+
+        <script type="text/javascript" src="/gapi-worker.js"></script>
+
+        <script type="text/javascript">
+            var card_list = {};
+            // Add a callback which updates the HTML of this page dynamically as data is added to
+            // the message object.
+            function addCard(msg, peer, ts) {
+                console.log("Adding new conversation entry for:", peer);
+                //update conversation_list object and add a new card
+                var template = document.querySelector("#conversation_template");
+                var clone = template.content.cloneNode(true);
+                clone.querySelector("[name=conversation_name]").textContent = peer;
+                clone.querySelector("[name=conversation_ts]").textContent = ts;
+                clone.querySelector("[name=conversation_card]").href = `conv.html?user=${peer}`;
+                document.querySelector("#conversation_list").appendChild(clone);
+                return clone;
+            }
+
+            // Set a callback to run when *new* messages are received from the internet. This adds
+            // a new card (if required) and adds a reference to that card to the local cache object.
+            sesDB.updateMsgChainCallback(function(msg, peer, ts) {
+                if (!(peer in card_list)) {
+                    card_list[peer] = addCard(msg, peer, ts);
+                }
+            });
+
+            // Set a callback to retrieve *all* current unique peer names from the DB.
+            sesDB.getUniquePeers(function(peer) {
+                console.log("Unique Peer:", peer);
+            });
+        </script>
+
+        <script async defer src="https://apis.google.com/js/api.js"
+            onload="this.onload=function(){};handleClientLoad()"
+            onreadystatechange="if (this.readyState === 'complete') this.onload()">
+        </script>
+
+        <script type="text/javascript">
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker.js')
+                .then(function(registration) {
+                    console.log('Registered:', registration);
+                })
+                .catch(function(error) {
+                    console.log('Registration failed:', error);
+                });
+            }
+        </script>
+    </body>
+</html>
+
