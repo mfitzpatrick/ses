@@ -11,6 +11,7 @@
 var CLIENT_ID = '';
 var API_KEY = '';
 var EMAIL_DOMAIN = '';
+var FORWARDER_EMAIL = '';
 
 // Array of API discovery doc URLs for APIs used by the quickstart
 var DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"];
@@ -52,6 +53,7 @@ function handleClientLoad() {
         API_KEY = config_data.api_key;
         CLIENT_ID = config_data.web.client_id;
         EMAIL_DOMAIN = config_data.email_domain;
+        FORWARDER_EMAIL = config_data.forwarder_email;
         gapi.load('client:auth2', initClient);
     });
 }
@@ -126,7 +128,6 @@ function getSMSLabelID() {
     gapi.client.gmail.users.labels.list({
         'userId': 'me',
     }).then(function(response) {
-        console.log("Labels:", response.result);
         var labels = response.result.labels;
 
         if (labels && labels.length > 0) {
@@ -154,7 +155,6 @@ function getNewMessages() {
         'labelIds': sms_label_id,
     }).then(function(response) {
         var threads = response.result.threads;
-        console.log("Threads:", threads)
 
         if (threads && threads.length > 0) {
             for (i = 0; i < threads.length; i++) {
@@ -181,7 +181,6 @@ function getMessagesFromThread(threadID) {
         'id': threadID,
         'format': 'FULL',
     }).then(function(response) {
-        console.log("Thread:", threadID, "Data:", response.result)
         var msgs = response.result.messages;
 
         if (msgs && msgs.length > 0) {
@@ -205,7 +204,6 @@ function getOneMessage(messageID) {
         'id': messageID,
         'format': 'FULL',
     }).then(function(response) {
-        console.log("Message:", messageID, "Data:", response.result)
         var msg = response.result;
 
         if (msg.payload.headers.length > 0) {
@@ -213,24 +211,70 @@ function getOneMessage(messageID) {
             //variable
             var email = "";
             var date = "";
+            var body = "";
             for (i = 0; i < msg.payload.headers.length; i++) {
                 var hdr = msg.payload.headers[i];
                 if (hdr.name.toUpperCase() == "TO" || hdr.name.toUpperCase() == "FROM") {
                     if (hdr.value.includes(EMAIL_DOMAIN)) {
                         email = hdr.value;
+                        body = b64Decode(msg.payload.body.data).trim();
+                    } else if (email.length == 0 && body.length == 0 && hdr.value.includes(FORWARDER_EMAIL)) {
+                        //the response was sent via a forwarder mailbox. We need to parse out the
+                        //forwarder headers to determine who sent this message
+                        var parsed = parseForwardedMessage(msg.payload.body);
+                        if (parsed != null) {
+                            email = parsed.sender;
+                            body = parsed.contents;
+                        } else {
+                            console.log("parseForwardedMessage failed");
+                        }
                     }
                 } else if (hdr.name.toUpperCase() == "DATE") {
                     date = hdr.value;
                 }
             }
             //if we found all the headers we were looking for, add them to our message DB
-            if (email.length > 0 && date.length > 0) {
-                sesDB.addMsg(msg, email, date);
+            if (email.length > 0 && date.length > 0 && body.length > 0) {
+                sesDB.addMsg(msg, email, date, body);
             }
         } else {
             console.log("Couldn't find message:", messageID);
         }
     });
+}
+
+/*
+ * Parse the base64-encoded message body object and search for a 'forwarded message' header. From
+ * this, extract the sender information, and also extract the message contents following the header.
+ */
+function parseForwardedMessage(msgBody) {
+    var body = b64Decode(msgBody.data);
+    var bodyLines = body.split("\n");
+    var sender = '';
+    var contents = '';
+    var contentsStart = 0;
+    for (i = 0; i < bodyLines.length; i++) {
+        var line = bodyLines[i];
+        var upperLine = bodyLines[i].toUpperCase();
+        //check if a 'from' line appears with the correct email domain
+        if (upperLine.includes("FROM") && line.includes(EMAIL_DOMAIN)) {
+            sender = line.split(": ")[1];
+        }
+        if (contentsStart == 0) {
+            //now check for the start of the body section. It will appear after the subject line
+            if (upperLine.includes("SUBJECT")) {
+                contentsStart = i + 1;
+            }
+        } else {
+            if (upperLine.includes("ORIGINAL MESSAGE")) {
+                //return the required object, we can ignore all following lines
+                return {'sender': sender, 'contents': contents.trim()};
+            }
+            contents += line;
+        }
+    }
+    //we searched to the end without finding anything, returning null indicates failure
+    return null;
 }
 
 function sendMail(dst, body) {
@@ -251,5 +295,22 @@ function sendMail(dst, body) {
     }).then(function(response) {
         console.log("sendMail response:", response);
     });
+}
+
+/*
+ * Base64 Decoder functions. These are included because the standard browser base64 functions don't
+ * work well enough for this. This decoder function replaces special characters with an equivalent
+ * which is acceptable to the browser's implementation of atob().
+ */
+function b64Decode(val) {
+    function unicodeBase64Decode(text) {
+        return decodeURIComponent(Array.prototype.map.call(window.atob(text), function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+    }
+
+    return val.split(/\r?\n/g).map(function(value) {
+        return (unicodeBase64Decode(value.replace(/\s+/g, '').replace(/\-/g, '+').replace(/\_/g, '/')));
+    }).join("\n");
 }
 

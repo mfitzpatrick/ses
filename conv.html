@@ -5,6 +5,8 @@
         <meta charset="utf-8" />
         <meta name="description" content="A Simple Emailing Service displaying emails like SMSs">
         <link rel="manifest" href="/manifest.json">
+        <script src="/idb.js"></script>
+        <script src="/db.js"></script>
     </head>
     <body>
         <header class="banner">
@@ -26,18 +28,16 @@
         <script type="text/javascript" src="/gapi-worker.js"></script>
 
         <script type="text/javascript">
-            console.log("Document query string:", window.location.search);
-            var chat_user = URLSearchParams(window.location.search).get('user');
-            console.log("chat user is:", chat_user);
-            // Add a callback which updates the HTML of this page dynamically as data is added to
-            // the message object.
-            updateChatCallback(chat_user, function(msg, ts, is_sent) {
-                console.log("Adding new chat entry for:", email);
+            var card_list = {};
+            var chat_user = new URLSearchParams(window.location.search).get('user');
+            // Add a chat card entry to the UI
+            function addChatCard(msg, ts, body, is_sent) {
+                console.log("Adding new chat entry with body", body);
                 //update conversation_list object and add a new card
                 var template = document.querySelector("#chat_template");
                 var clone = template.content.cloneNode(true);
-                entry.querySelector("#chat_text").textContent = msg;
-                entry.querySelector("#chat_ts").textContent = ts;
+                clone.querySelector("[name=chat_text]").textContent = body;
+                clone.querySelector("[name=chat_ts]").textContent = ts;
                 //set styling based on whether this was sent or received
                 var entry = clone.querySelector("[name=chat_entry]");
                 if (is_sent) {
@@ -46,6 +46,26 @@
                     entry.classList.add("msg_received");
                 }
                 document.querySelector("#chat_section").appendChild(clone);
+            }
+
+            // Add a callback which updates the HTML of this page dynamically as data is added to
+            // the message object.
+            sesDB.updateChatCallback(chat_user, function(msg, ts, body, is_sent) {
+                if (!(msg.id in card_list)) {
+                    card_list[msg.id] = addChatCard(msg, ts, body, is_sent);
+                }
+            });
+
+            /*
+             * Get all messages for the currently-configured chat_user that are already stored in
+             * the DB. For each retrieved message, create a new message card and display it.
+             */
+            sesDB.getMessagesForPeer(chat_user, function(entry) {
+                console.log("Chat entry:", entry);
+                if (!(entry.msg.id in card_list)) {
+                    var is_sent = ("SENT" in entry.msg.labelIds) ? true : false;
+                    card_list[entry.msg.id] = addChatCard(entry.msg, entry.ts, entry.body, is_sent);
+                }
             });
         </script>
 

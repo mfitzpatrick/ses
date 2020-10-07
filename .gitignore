@@ -1,4 +1,9 @@
-.
+.*
+
+*.key
+*.pem
+*.ext
+*.csr
 
 config.json
 

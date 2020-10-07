@@ -35,16 +35,17 @@
                 //update conversation_list object and add a new card
                 var template = document.querySelector("#conversation_template");
                 var clone = template.content.cloneNode(true);
+                var epeer = encodeURIComponent(peer);
                 clone.querySelector("[name=conversation_name]").textContent = peer;
                 clone.querySelector("[name=conversation_ts]").textContent = ts;
-                clone.querySelector("[name=conversation_card]").href = `conv.html?user=${peer}`;
+                clone.querySelector("[name=conversation_card]").href = `conv.html?user=${epeer}`;
                 document.querySelector("#conversation_list").appendChild(clone);
                 return clone;
             }
 
             // Set a callback to run when *new* messages are received from the internet. This adds
             // a new card (if required) and adds a reference to that card to the local cache object.
-            sesDB.updateMsgChainCallback(function(msg, peer, ts) {
+            sesDB.updateMsgChainCallback(function(msg, peer, ts, body) {
                 if (!(peer in card_list)) {
                     card_list[peer] = addCard(msg, peer, ts);
                 }
@@ -53,6 +54,7 @@
             // Set a callback to retrieve *all* current unique peer names from the DB.
             sesDB.getUniquePeers(function(peer) {
                 console.log("Unique Peer:", peer);
+                card_list[peer.peer] = addCard(peer.msg, peer.peer, peer.ts);
             });
         </script>
 

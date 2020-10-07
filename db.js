@@ -31,8 +31,8 @@ var sesDB = (function() {
         }
     });
 
-    function addMsg(msg, email, ts) {
-        var peer = email.split("@", 1);
+    function addMsg(msg, email, ts, body) {
+        var peer = email.split("@", 1)[0];
         //add this new message to our global database
         sesDBpromise.then(function(db) {
             var tx = db.transaction('messages', 'readwrite');
@@ -43,6 +43,7 @@ var sesDB = (function() {
                 email: email,
                 peer: peer,
                 ts: ts,
+                body: body,
             };
             os.add(dbmsg);
             return tx.complete;
@@ -50,10 +51,10 @@ var sesDB = (function() {
             //also add message to the relevant message chain
             if (addMsgCallback != null && msgCallbackFilterPeer == peer) {
                 var is_sent = ("SENT" in msg.labelIds) ? true : false;
-                addMsgCallback(msg, ts, is_sent);
+                addMsgCallback(msg, ts, body, is_sent);
             } else if (addMsgChainCallback != null) {
                 // call the callback to inform it of the new message
-                addMsgChainCallback(msg, peer, ts);
+                addMsgChainCallback(msg, peer, ts, body);
             } else {
                 console.log("no message callback");
             }
@@ -71,21 +72,49 @@ var sesDB = (function() {
         addMsgCallback = f;
     }
 
+    /*
+     * Retrieve all unique peer entries (unique as-per phone number). For each retrieved entry,
+     * call the cb() function.
+     */
     function getUniquePeers(cb) {
         sesDBpromise.then(function(db) {
             var tx = db.transaction('messages', 'readonly');
             var os = tx.objectStore('messages');
             var idx = os.index('peer');
-            idx.openCursor(null, 'nextunique').onsuccess = function(evt) {
-                var cursor = evt.target.result;
-                if (cursor) {
-                    console.log("Read from DB:", cursor);
-                    cb(cursor);
-                    cursor.continue();
-                } else {
-                    console.log("Retrieved all DB entries");
-                }
-            };
+            return idx.openCursor(null, 'nextunique');
+        }).then(function handlePeer(cursor) {
+            if (cursor) {
+                cb(cursor._cursor.value);
+            } else {
+                //Retrieved all DB entries
+                return;
+            }
+            return cursor.continue().then(handlePeer);
+        }).then(function() {
+            console.log("Peer retrieval complete");
+        });
+    }
+
+    /*
+     * Retrieve all messages associated with a given peer (specified by the phone number).
+     * For each retrieved peer, call the cb() function.
+     */
+    function getMessagesForPeer(peer, cb) {
+        sesDBpromise.then(function(db) {
+            var tx = db.transaction('messages', 'readonly');
+            var os = tx.objectStore('messages');
+            var idx = os.index('peer');
+            return idx.openCursor(IDBKeyRange.only(peer));
+        }).then(function handleMsg(cursor) {
+            if (cursor) {
+                cb(cursor._cursor.value);
+            } else {
+                //Retrieved all DB entries
+                return;
+            }
+            return cursor.continue().then(handleMsg);
+        }).then(function() {
+            console.log("Message retrieval complete");
         });
     }
 
@@ -94,6 +123,7 @@ var sesDB = (function() {
         updateMsgChainCallback: (updateMsgChainCallback),
         updateChatCallback: (updateChatCallback),
         getUniquePeers: (getUniquePeers),
+        getMessagesForPeer: (getMessagesForPeer),
     };
 })();
 
