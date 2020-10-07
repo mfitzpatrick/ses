@@ -31,7 +31,7 @@ var sesDB = (function() {
         }
     });
 
-    function addMsg(msg, email, ts, body) {
+    function addMsg(msg, email, ts, body, is_sent) {
         var peer = email.split("@", 1)[0];
         //add this new message to our global database
         sesDBpromise.then(function(db) {
@@ -42,6 +42,7 @@ var sesDB = (function() {
                 msg: msg,
                 email: email,
                 peer: peer,
+                is_sent: is_sent,
                 ts: ts,
                 body: body,
             };
@@ -50,7 +51,6 @@ var sesDB = (function() {
         }).then(function() {
             //also add message to the relevant message chain
             if (addMsgCallback != null && msgCallbackFilterPeer == peer) {
-                var is_sent = ("SENT" in msg.labelIds) ? true : false;
                 addMsgCallback(msg, ts, body, is_sent);
             } else if (addMsgChainCallback != null) {
                 // call the callback to inform it of the new message

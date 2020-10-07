@@ -212,13 +212,17 @@ function getOneMessage(messageID) {
             var email = "";
             var date = "";
             var body = "";
+            var is_sent = false;
             for (i = 0; i < msg.payload.headers.length; i++) {
                 var hdr = msg.payload.headers[i];
-                if (hdr.name.toUpperCase() == "TO" || hdr.name.toUpperCase() == "FROM") {
+                if (hdr.name.toUpperCase() == "TO") {
                     if (hdr.value.includes(EMAIL_DOMAIN)) {
+                        is_sent = true;
                         email = hdr.value;
                         body = b64Decode(msg.payload.body.data).trim();
-                    } else if (email.length == 0 && body.length == 0 && hdr.value.includes(FORWARDER_EMAIL)) {
+                    } //else it's not an email we care about
+                } else if (hdr.name.toUpperCase() == "FROM") {
+                    if (email.length == 0 && body.length == 0 && hdr.value.includes(FORWARDER_EMAIL)) {
                         //the response was sent via a forwarder mailbox. We need to parse out the
                         //forwarder headers to determine who sent this message
                         var parsed = parseForwardedMessage(msg.payload.body);
@@ -235,7 +239,7 @@ function getOneMessage(messageID) {
             }
             //if we found all the headers we were looking for, add them to our message DB
             if (email.length > 0 && date.length > 0 && body.length > 0) {
-                sesDB.addMsg(msg, email, date, body);
+                sesDB.addMsg(msg, email, date, body, is_sent);
             }
         } else {
             console.log("Couldn't find message:", messageID);

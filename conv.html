@@ -5,6 +5,25 @@
         <meta charset="utf-8" />
         <meta name="description" content="A Simple Emailing Service displaying emails like SMSs">
         <link rel="manifest" href="/manifest.json">
+        <link rel="stylesheet" href="/css/app.css">
+        <style>
+            /* Custom styles for this HTML file */
+            .list .chat_entry {
+                padding: 10px;
+                width: 70%;
+                position: relative;
+            }
+
+            .list .msg_sent {
+                background: #6b88fc;
+                float: right;
+            }
+
+            .list .msg_received {
+                background: #0ee77f;
+                float: left;
+            }
+        </style>
         <script src="/js/idb.js"></script>
         <script src="/js/db.js"></script>
     </head>
@@ -19,6 +38,7 @@
         <section id="chat_section" class="list">
             <template id="chat_template">
                 <div name="chat_entry" class="chat_entry">
+                    <div name="chat_id" style="display: none;"></div>
                     <div name="chat_text" class="chat_text"></div>
                     <div><small name="chat_ts" class="chat_ts"></small></div>
                 </div>
@@ -36,6 +56,7 @@
                 //update conversation_list object and add a new card
                 var template = document.querySelector("#chat_template");
                 var clone = template.content.cloneNode(true);
+                clone.querySelector("[name=chat_id]").textContent = msg.id;
                 clone.querySelector("[name=chat_text]").textContent = body;
                 clone.querySelector("[name=chat_ts]").textContent = ts;
                 //set styling based on whether this was sent or received
@@ -45,7 +66,23 @@
                 } else {
                     entry.classList.add("msg_received");
                 }
-                document.querySelector("#chat_section").appendChild(clone);
+                //check message IDs of each message to determine where this should sit
+                var did_set = false;
+                var nodes = document.querySelector("#chat_section").childNodes;
+                for (var i = 0; i < nodes.length; i++) {
+                    //compare the node's message ID with this new entry's message ID. First make sure
+                    //we aren't inadvertently checking the template node or a random text node
+                    if (nodes[i].nodeType == 1 && nodes[i].nodeName != "TEMPLATE" &&
+                            parseInt(nodes[i].querySelector("[name=chat_id]").textContent, 16) > parseInt(msg.id, 16)) {
+                        document.querySelector("#chat_section").insertBefore(clone, nodes[i]);
+                        did_set = true;
+                        break;
+                    }
+                }
+                if (!did_set) {
+                    // We didn't find an entry to append this after, so we add it to the end
+                    document.querySelector("#chat_section").appendChild(clone);
+                }
             }
 
             // Add a callback which updates the HTML of this page dynamically as data is added to
@@ -63,8 +100,7 @@
             sesDB.getMessagesForPeer(chat_user, function(entry) {
                 console.log("Chat entry:", entry);
                 if (!(entry.msg.id in card_list)) {
-                    var is_sent = ("SENT" in entry.msg.labelIds) ? true : false;
-                    card_list[entry.msg.id] = addChatCard(entry.msg, entry.ts, entry.body, is_sent);
+                    card_list[entry.msg.id] = addChatCard(entry.msg, entry.ts, entry.body, entry.is_sent);
                 }
             });
         </script>
