@@ -10,11 +10,16 @@ const CACHE_NAME = 'sesapp-cache-v1';
 const URLS_TO_CACHE = [
     '.',
     'index.html',
+    'conv.html',
 
     'config.json',
     'manifest.json',
 
-    'gapi-worker.js'
+    'css/app.css',
+
+    'js/db.js',
+    'js/gapi-worker.js',
+    'js/idb.js'
 ];
 
 /*

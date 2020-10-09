@@ -23,16 +23,35 @@
                 background: #0ee77f;
                 float: left;
             }
+
+            .sendbox {
+                width: 100%;
+                height: 100px;
+                display: flex;
+            }
+
+            .sendbox textarea {
+                height: 100%;
+                width: 90%;
+            }
+
+            .sendbox button {
+                height: 100%;
+                width: 10%;
+            }
         </style>
         <script src="/js/idb.js"></script>
         <script src="/js/db.js"></script>
     </head>
     <body>
         <header class="banner">
-            <h1>Simple Emailing Service</h1>
-            <label id="authenticated_email"></label>
-            <button id="logout_btn" style="display: none;">Logout</button>
-            <label id="chat_user"></label>
+            <button id="back_btn">Back</button>
+            <div class="banner_ids">
+                <h1>Simple Emailing Service</h1>
+                <label id="authenticated_email"></label>
+                <label id="chat_user"></label>
+            </div>
+            <button id="logout_btn">Logout</button>
         </header>
 
         <section id="chat_section" class="list">
@@ -44,6 +63,11 @@
                 </div>
             </template>
         </section>
+
+        <footer class="sendbox">
+            <textarea id="composebox" name="composebox" placeholder="Type your message"></textarea>
+            <button id="sentbtn" name="send">Send</button>
+        </footer>
 
         <script type="text/javascript" src="/js/gapi-worker.js"></script>
 
