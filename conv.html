@@ -40,16 +40,17 @@
                 width: 10%;
             }
         </style>
+        <script src="/js/contacts.js"></script>
         <script src="/js/idb.js"></script>
         <script src="/js/db.js"></script>
     </head>
     <body>
         <header class="banner">
-            <button id="back_btn">Back</button>
+            <button id="back_btn" onclick="window.history.back()">Back</button>
             <div class="banner_ids">
                 <h1>Simple Emailing Service</h1>
-                <label id="authenticated_email"></label>
-                <label id="chat_user"></label>
+                <h3 id="authenticated_email"></h3>
+                <h3 id="chat_user"></h3>
             </div>
             <button id="logout_btn">Logout</button>
         </header>
@@ -65,8 +66,8 @@
         </section>
 
         <footer class="sendbox">
-            <textarea id="composebox" name="composebox" placeholder="Type your message"></textarea>
-            <button id="sentbtn" name="send">Send</button>
+            <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
+            <button id="sendbtn" name="send">Send</button>
         </footer>
 
         <script type="text/javascript" src="/js/gapi-worker.js"></script>
@@ -74,6 +75,7 @@
         <script type="text/javascript">
             var card_list = {};
             var chat_user = new URLSearchParams(window.location.search).get('user');
+            document.querySelector("#chat_user").textContent = chat_user;
             // Add a chat card entry to the UI
             function addChatCard(msg, ts, body, is_sent) {
                 console.log("Adding new chat entry with body", body);
@@ -127,6 +129,16 @@
                     card_list[entry.msg.id] = addChatCard(entry.msg, entry.ts, entry.body, entry.is_sent);
                 }
             });
+
+            // Set the message sending handler.
+            document.querySelector("#sendbtn").onclick = function() {
+                var msgtext = document.querySelector("#composebox").value.trim();
+                if (msgtext.len == 0) {
+                    console.log("No message has been composed in the text area");
+                } else {
+                    sendMail(chat_user, msgtext);
+                }
+            };
         </script>
 
         <script async defer src="https://apis.google.com/js/api.js"

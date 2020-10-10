@@ -14,12 +14,14 @@ var EMAIL_DOMAIN = '';
 var FORWARDER_EMAIL = '';
 
 // Array of API discovery doc URLs for APIs used by the quickstart
-var DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"];
+var DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest",
+    "https://www.googleapis.com/discovery/v1/apis/people/v1/rest"];
 
 // Authorisation scopes required by the Google API; multiple scopes can be included, separated by spaces.
 var SCOPES = 'https://www.googleapis.com/auth/gmail.modify' +
     ' https://www.googleapis.com/auth/gmail.compose' +
-    ' https://www.googleapis.com/auth/gmail.send';
+    ' https://www.googleapis.com/auth/gmail.send' +
+    ' https://www.googleapis.com/auth/directory.readonly';
 
 var signoutButton = document.getElementById('logout_btn');
 
@@ -89,6 +91,9 @@ function updateSigninStatus(isSignedIn) {
         signoutButton.style.display = 'block';
         // We're now signed in; retrieve user information and start downloading messages
         whoAmI();
+        //set the contact lookup worker function
+        contacts.setLookupWorker(getUserByPhoneNumber);
+        //start retrieving recent emails
         getSMSLabelID();
     } else {
         signoutButton.style.display = 'none';
@@ -117,6 +122,20 @@ function whoAmI() {
         'userId': 'me',
     }).then(function(response) {
         console.log("Who Am I?", response.result);
+    });
+}
+
+/*
+ * Lookup a user based on their phone number using the google 'People' API.
+ */
+function getUserByPhoneNumber(phoneNumber) {
+    gapi.client.people.people.searchDirectoryPeople({
+        'userId': 'me',
+        'query': `${phoneNumber}`,
+        'readMask': 'names, phoneNumbers',
+        'sources': 'DIRECTORY_SOURCE_TYPE_UNSPECIFIED',
+    }).then(function(response) {
+        console.log("User for phone number", phoneNumber, "is:", response.result);
     });
 }
 
@@ -281,6 +300,9 @@ function parseForwardedMessage(msgBody) {
     return null;
 }
 
+/*
+ * Send an email message to the recipient marked by dst with the contents in body.
+ */
 function sendMail(dst, body) {
     var msg = btoa(
         "Content-Type: text/plain; charset=\"UTF-8\"\n" +
@@ -288,7 +310,8 @@ function sendMail(dst, body) {
         "to: " + dst + "\n" +
         "from: \"SES Eastern Group Operations (SES)\" <seseasterngroupops@ses.qfes.qld.gov.au>\n" +
         "\n" +
-        body
+        body +
+        "\n-#-"
     );
     gapi.client.gmail.users.messages.send({
         'userId': 'me',
@@ -298,6 +321,8 @@ function sendMail(dst, body) {
         },
     }).then(function(response) {
         console.log("sendMail response:", response);
+        //now add message to local cache DB
+        sesDB.addMsg(msg, dst, Date.now(), msg, true);
     });
 }
 

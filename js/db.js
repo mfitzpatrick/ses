@@ -20,12 +20,16 @@ var sesDB = (function() {
     var sesDBpromise = idb.open('ses', 1, function(upgradeDB) {
         switch (upgradeDB.oldVersion) {
         case 0:
-            console.log("Upgrading ses DB");
+            console.log("Upgrading SES DB");
             if (!upgradeDB.objectStoreNames.contains('messages')) {
-                console.log("Creating messages object store");
                 var os = upgradeDB.createObjectStore('messages', {keyPath: 'id'});
                 // the 'peer' index holds the remote peer's phone number for more easy querying
                 os.createIndex('peer', 'peer', {unique: false});
+            }
+            //create the 'contacts' cache, which will cache the user's phone number and name combination
+            //for more easy display on the relevant pages
+            if (!upgradeDB.objectStoreNames.contains('contacts')) {
+                var os = upgradeDB.createObjectStore('contacts', {keyPath: 'phone'});
             }
             break;
         }
@@ -118,12 +122,31 @@ var sesDB = (function() {
         });
     }
 
+    /*
+     * Retrieve a user's name when supplied with only their phone number.
+     * The name is returned via the provided callback.
+     */
+    function getNameForPhoneNumber(phoneNumber, cb) {
+        sesDBpromise.then(function(db) {
+            var tx = db.transaction('contacts', 'readonly');
+            var os = tx.objectStore('contacts');
+            return os.get(phoneNumber);
+        }).then(function(result) {
+            if (cb != null) {
+                cb(result);
+            } else {
+                console.log("getNameForPhoneNumber retrieved:", result);
+            }
+        });
+    }
+
     return {
         addMsg: (addMsg),
         updateMsgChainCallback: (updateMsgChainCallback),
         updateChatCallback: (updateChatCallback),
         getUniquePeers: (getUniquePeers),
         getMessagesForPeer: (getMessagesForPeer),
+        getNameForPhoneNumber: (getNameForPhoneNumber),
     };
 })();
 

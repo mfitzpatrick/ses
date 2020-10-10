@@ -17,6 +17,7 @@ const URLS_TO_CACHE = [
 
     'css/app.css',
 
+    'js/contacts.js',
     'js/db.js',
     'js/gapi-worker.js',
     'js/idb.js'

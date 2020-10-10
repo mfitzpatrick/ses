@@ -13,6 +13,7 @@
                 padding: 10px;
             }
         </style>
+        <script src="/js/contacts.js"></script>
         <script src="/js/idb.js"></script>
         <script src="/js/db.js"></script>
     </head>
@@ -50,6 +51,22 @@
                 clone.querySelector("[name=conversation_ts]").textContent = ts;
                 clone.querySelector("[name=conversation_card]").href = `conv.html?user=${epeer}`;
                 document.querySelector("#conversation_list").appendChild(clone);
+
+                //Now retrieve the cached user's name and display that on the conversation card
+                sesDB.getNameForPhoneNumber(peer, function(result) {
+                    if (result == undefined) {
+                        //lookup contact from google contacts
+                        contacts.lookup(peer, function(contact) {
+                            console.log("Contact infor for phone number", peer, "is:", contact);
+                            clone.querySelector("[name=conversation_name]").textContent = contact;
+                        });
+                    } else { //display contact name
+                        console.log("Name entry for phone number", peer, "is:", result);
+                        //overwrite the current name entry
+                        clone.querySelector("[name=conversation_name]").textContent = result;
+                    }
+                });
+
                 return clone;
             }
 
@@ -63,8 +80,9 @@
 
             // Set a callback to retrieve *all* current unique peer names from the DB.
             sesDB.getUniquePeers(function(peer) {
-                console.log("Unique Peer:", peer);
-                card_list[peer.peer] = addCard(peer.msg, peer.peer, peer.ts);
+                if (!(peer in card_list)) {
+                    card_list[peer.peer] = addCard(peer.msg, peer.peer, peer.ts);
+                }
             });
         </script>
 
