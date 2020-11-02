@@ -66,8 +66,10 @@
         </section>
 
         <footer class="sendbox">
-            <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
-            <button id="sendbtn" name="send">Send</button>
+            <form action="#" onsubmit="return submitMsg(this)" class="sendbox">
+                <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
+                <input id="sendbtn" type="submit" value="Send">
+            </form>
         </footer>
 
         <script type="text/javascript" src="/js/gapi-worker.js"></script>
@@ -108,6 +110,9 @@
                 if (!did_set) {
                     // We didn't find an entry to append this after, so we add it to the end
                     document.querySelector("#chat_section").appendChild(clone);
+                    //scroll to bottom of window
+                    var chatView = document.querySelector("#chat_section");
+                    chatView.scrollTop = chatView.scrollHeight;
                 }
             }
 
@@ -131,13 +136,21 @@
             });
 
             // Set the message sending handler.
-            document.querySelector("#sendbtn").onclick = function() {
+            function submitMsg(theForm) {
                 var msgtext = document.querySelector("#composebox").value.trim();
                 if (msgtext.len == 0) {
                     console.log("No message has been composed in the text area");
                 } else {
-                    sendMail(chat_user, msgtext);
+                    sendMail(chat_user, msgtext, function(didSendSuccessfully) {
+                        if (didSendSuccessfully) {
+                            document.querySelector("#composebox").value = "";
+                        }
+                    });
+                    //scroll to bottom of window
+                    var chatView = document.querySelector("#chat_section");
+                    chatView.scrollTop = chatView.scrollHeight;
                 }
+                return false;
             };
         </script>
 

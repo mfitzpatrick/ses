@@ -57,13 +57,15 @@
                     if (result == undefined) {
                         //lookup contact from google contacts
                         contacts.lookup(peer, function(contact) {
-                            console.log("Contact infor for phone number", peer, "is:", contact);
+                            console.log("Contact info for phone number", peer, "is:", contact);
                             clone.querySelector("[name=conversation_name]").textContent = contact;
                         });
                     } else { //display contact name
                         console.log("Name entry for phone number", peer, "is:", result);
                         //overwrite the current name entry
                         clone.querySelector("[name=conversation_name]").textContent = result;
+                        //add name to the DB
+                        sesDB.addContact(peer, result);
                     }
                 });
 

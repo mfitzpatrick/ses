@@ -123,6 +123,24 @@ var sesDB = (function() {
     }
 
     /*
+     * Cache a user's name and phone number in the DB.
+     */
+    function addContact(phoneNumber, name) {
+        sesDBpromise.then(function(db) {
+            var tx = db.transaction('contacts', 'readwrite');
+            var os = tx.objectStore('contacts');
+            var dbmsg = {
+                phone: phoneNumber,
+                name: name,
+            };
+            os.add(dbmsg);
+            return tx.complete;
+        }).then(function() {
+            console.log("Contact added:", name, phoneNumber);
+        });
+    }
+
+    /*
      * Retrieve a user's name when supplied with only their phone number.
      * The name is returned via the provided callback.
      */
@@ -146,6 +164,7 @@ var sesDB = (function() {
         updateChatCallback: (updateChatCallback),
         getUniquePeers: (getUniquePeers),
         getMessagesForPeer: (getMessagesForPeer),
+        addContact: (addContact),
         getNameForPhoneNumber: (getNameForPhoneNumber),
     };
 })();

@@ -302,8 +302,14 @@ function parseForwardedMessage(msgBody) {
 
 /*
  * Send an email message to the recipient marked by dst with the contents in body.
+ * When completed, this will call the oncomplete callback function with a bool argument indicating
+ * success.
  */
-function sendMail(dst, body) {
+function sendMail(dst, body, oncomplete) {
+    if (dst.search("@") == -1) {
+        //append the configured email domain before sending
+        dst += "@" + EMAIL_DOMAIN;
+    }
     var msg = btoa(
         "Content-Type: text/plain; charset=\"UTF-8\"\n" +
         "Content-Transfer-Encoding: message/rfc2822\n" +
@@ -322,7 +328,10 @@ function sendMail(dst, body) {
     }).then(function(response) {
         console.log("sendMail response:", response);
         //now add message to local cache DB
-        sesDB.addMsg(msg, dst, Date.now(), msg, true);
+        sesDB.addMsg(response.result, dst, Date.now(), body, true);
+        if (null != oncomplete) {
+            oncomplete(response.status == 200);
+        }
     });
 }
 
