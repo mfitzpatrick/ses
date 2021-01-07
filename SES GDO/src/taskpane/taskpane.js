@@ -40,22 +40,39 @@ export async function run() {
     if (null == item) {
         console.log("No mailbox item");
     } else {
-        updateSenderContext(item.from);
-        getRelatedMsgs(item.from.emailAddress);
+        //check if the 'from' field is our user's information
+        var iam = Office.context.mailbox.userProfile.emailAddress;
+        if (iam.localeCompare(item.from.emailAddress) == 0) {
+            //This is a message sent from us. If there is only 1 recipient, set the sender context
+            //to that recipient. If not, don't get related messages.
+            var toList = Office.context.mailbox.item.to;
+            if (toList.length == 1) {
+                updateSenderContext(toList[0]);
+                getRelatedMsgs(toList[0].emailAddress);
+            } else {
+                //clear contents
+                document.querySelector("#app-body").innerHTML = '';
+                document.querySelector("#contact-name").textContent = "Too Many Recipients";
+                document.querySelector("#contact-email").textContent = "";
+            }
+        } else {
+            updateSenderContext(item.from);
+            getRelatedMsgs(item.from.emailAddress);
+        }
     }
 }
 
 /*
  * Update the sender-information context fields at the top of the pane.
  */
-function updateSenderContext(from) {
+function updateSenderContext(contact) {
     var currentAddr = document.querySelector("#contact-email");
-    if (from.emailAddress != currentAddr.textContent) {
+    if (contact.emailAddress != currentAddr.textContent) {
         //clear the list
         document.querySelector("#app-body").innerHTML = '';
     }
-    document.querySelector("#contact-name").textContent = from.displayName;
-    currentAddr.textContent = from.emailAddress;
+    document.querySelector("#contact-name").textContent = contact.displayName;
+    currentAddr.textContent = contact.emailAddress;
 }
 
 /*
@@ -81,33 +98,38 @@ function wrapRequest(request) {
  * This function uses an EWS request to search for all messages containing the emailAddr specified.
  * For all messages found, it extracts the ID and key values, then performs a second EWS request
  * to retrieve the message bodies.
+ *
+ * There are multiple folders that need to be searched (inbox and sent-items). This will create 2
+ * separate EWS messages to search these folders.
  */
 function getRelatedMsgs(emailAddr) {
-    var request = wrapRequest(
-        '<m:FindItem>' +
-        '  <m:ItemShape>' +
-        '    <t:BaseShape>IdOnly</t:BaseShape>' +
-        '    <t:AdditionalProperties>' +
-        '      <t:FieldURI FieldURI="item:IsFromMe" />' +
-        '    </t:AdditionalProperties>' +
-        '  </m:ItemShape>' +
-        '  <m:ParentFolderIds><t:DistinguishedFolderId Id="inbox" /></m:ParentFolderIds>' +
-        '  <m:QueryString>' + emailAddr + '</m:QueryString>' +
-        '</m:FindItem>'
-    );
+    var folderlist = ["inbox", "sentitems"];
+    for (let folder of folderlist) {
+        var request = wrapRequest(
+            '<m:FindItem>' +
+            '  <m:ItemShape>' +
+            '    <t:BaseShape>IdOnly</t:BaseShape>' +
+            '  </m:ItemShape>' +
+            '  <m:ParentFolderIds>' +
+            '    <t:DistinguishedFolderId Id="' + folder + '" />' +
+            '  </m:ParentFolderIds>' +
+            '  <m:QueryString>Participants:' + emailAddr + '</m:QueryString>' +
+            '</m:FindItem>'
+        );
 
-    Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-        var response = $.parseXML(result.value);
-        var msgs = response.getElementsByTagName("t:Message");
-        var idTuples = [];
-        for (let item of msgs) {
-            var id = item.getElementsByTagName("t:ItemId")[0];
-            var msgID = id.getAttribute("Id");
-            var changeKey = id.getAttribute("ChangeKey");
-            idTuples.push([msgID, changeKey]);
-        }
-        getMsgBodies(idTuples);
-    });
+        Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
+            var response = $.parseXML(result.value);
+            var msgs = response.getElementsByTagName("t:Message");
+            var idTuples = [];
+            for (let item of msgs) {
+                var id = item.getElementsByTagName("t:ItemId")[0];
+                var msgID = id.getAttribute("Id");
+                var changeKey = id.getAttribute("ChangeKey");
+                idTuples.push([msgID, changeKey]);
+            }
+            getMsgBodies(idTuples);
+        });
+    }
 }
 
 /*
@@ -121,7 +143,7 @@ function getRelatedMsgs(emailAddr) {
  * The idTuples object should be an array of [msgID, changeKey] objects.
  */
 function getMsgBodies(idTuples) {
-    var contactAddr = document.querySelector("#contact-email").textContent;
+    var myAddr = Office.context.mailbox.userProfile.emailAddress;
     var idList = ""
     for (let item of idTuples) {
         idList += '<t:ItemId Id="' + item[0] + '" ChangeKey="' + item[1] + '" />';
@@ -131,6 +153,9 @@ function getMsgBodies(idTuples) {
         '  <m:ItemShape>' +
         '    <t:BaseShape>Default</t:BaseShape>' +
         '    <t:BodyType>Text</t:BodyType>' +
+        '    <t:AdditionalProperties>' +
+        '      <t:FieldURI FieldURI="item:IsFromMe" />' +
+        '    </t:AdditionalProperties>' +
         '  </m:ItemShape>' +
         '  <m:ItemIds>' +
              idList +
@@ -149,17 +174,38 @@ function getMsgBodies(idTuples) {
             var changeKey = id.getAttribute("ChangeKey");
             var fromMailbox = item.getElementsByTagName("t:From")[0];
             var fromAddr = fromMailbox.getElementsByTagName("t:EmailAddress")[0].textContent;
-            var isFromMe = (fromAddr.localeCompare(contactAddr) == 0) ? false : true;
+            var isFromMe = (fromAddr.localeCompare(myAddr) == 0);
             var ts = item.getElementsByTagName("t:DateTimeSent")[0].textContent;
             //read the body contents. Make sure it's not too large.
             var body = item.getElementsByTagName("t:Body")[0].textContent;
+            //truncate the legal disclaimer added by some mail services
+            body = truncateBody(body, "This correspondence is for the named");
+            //search for forwarded-message identifiers
+            body = truncateBody(body, "---------- Forwarded message");
             if (body.length > 1000) {
+                //cut off messages that are significantly long
                 body = body.substring(0, 1000);
             }
-            //add email item to the chat list if required
-            addChatEntry(msgID, changeKey, body, ts, isFromMe);
+            body = body.trim();
+            if (body.length > 0) {
+                //add email item to the chat list if required
+                addChatEntry(msgID, changeKey, body, ts, isFromMe);
+            }
         }
     });
+}
+
+/*
+ * For a specified string, body, search for a substring containing 'identifier'. If this substring
+ * is found, cut the string off at this point and return it.
+ */
+function truncateBody(body, identifier) {
+    var idx = body.indexOf(identifier);
+    if (idx > 0) {
+        //truncate the string from the 'identifier' index
+        body = body.substring(0, idx);
+    }
+    return body;
 }
 
 /*
@@ -170,6 +216,7 @@ function getMsgBodies(idTuples) {
  * it in the correct location in the list (using timestamp-ordering).
  */
 function addChatEntry(id, changeKey, body, ts, isFromMe) {
+    var entryDate = new Date(ts);
     //chat-entry builder helper function
     function buildChatEntry() {
         var template = document.querySelector("#chat-template");
@@ -181,7 +228,7 @@ function addChatEntry(id, changeKey, body, ts, isFromMe) {
             entry.classList.add("chat-entry-rx");
         }
         clone.querySelector("[name=chat-content]").textContent = body;
-        clone.querySelector("[name=chat-ts]").textContent = ts;
+        clone.querySelector("[name=chat-ts]").textContent = entryDate;
         clone.querySelector("[name=chat-id]").textContent = id;
         clone.querySelector("[name=chat-changekey]").textContent = changeKey;
         return clone;
@@ -191,7 +238,6 @@ function addChatEntry(id, changeKey, body, ts, isFromMe) {
     //if we find a location to add this in the list of children.
     var refItem = null;
     var isDuplicate = false; //another entry with the same ID is found
-    var entryDate = new Date(ts);
     var existingEntries = document.getElementsByName("chat-entry-holder");
     for (var i = 0; i < existingEntries.length; i++) {
         if (id.localeCompare(existingEntries[i].querySelector("[name=chat-id]").textContent) == 0 &&
@@ -247,7 +293,7 @@ function sendMail(body, cb) {
     Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
         console.log("SentMail:", result);
         var response = $.parseXML(result.value);
-        var respCode = response.getElementsByTagName("m:ResponseCode");
+        var respCode = response.getElementsByTagName("m:ResponseCode")[0];
         if (respCode.textContent.localeCompare("NoError") == 0) {
             cb(true);
         } else {

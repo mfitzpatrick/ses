@@ -85,16 +85,26 @@ b {
     font-weight: bold;
 }
 
+.list .chat-entry {
+}
+
 .list .entry-ctx {
     font-size: xx-small;
 }
 
 .list .chat-entry-rx {
     text-align: left;
+    background-color: #f8f9fa;
 }
 
 .list .chat-entry-tx {
     text-align: right;
+    background-color: #f1f1ff;
+}
+
+.list .entry-content {
+    white-space: pre-line;
+    overflow-wrap: break-word;
 }
 
 .sendbox {
