@@ -18,25 +18,60 @@
 
     <!-- Template styles -->
     <link href="taskpane.css" rel="stylesheet" type="text/css" />
+
+    <script type="text/javascript">
+        // Set the message sending handler.
+        function submitMsg(theForm) {
+            var msgtext = document.querySelector("#composebox").value.trim();
+            if (msgtext.len == 0) {
+                console.log("No message has been composed in the text area");
+            } else {
+                sendMail(chat_user, msgtext, function(didSendSuccessfully) {
+                    if (didSendSuccessfully) {
+                        document.querySelector("#composebox").value = "";
+                    }
+                });
+                //scroll to bottom of window
+                var chatView = document.querySelector("#chat_section");
+                chatView.scrollTop = chatView.scrollHeight;
+            }
+            return false;
+        };
+    </script>
 </head>
 
 <body class="ms-font-m ms-welcome ms-Fabric">
-    <!--<header class="ms-welcome__header ms-bgColor-neutralLighter">
-        <img width="90" height="90" src="../../assets/logo-filled.png" alt="Contoso" title="Contoso" />
-        <h1 class="ms-font-su">Welcome</h1>
-    </header>-->
+    <header class="ms-welcome__header ms-bgColor-neutralLighter">
+        <!--<img width="90" height="90" src="../../assets/logo-filled.png" alt="Contoso" title="Contoso" />
+        <h1 class="ms-font-su">Welcome</h1>-->
+        <label id="contact-name"></label>
+        <label id="contact-email"></label>
+    </header>
     <section id="sideload-msg" class="ms-welcome__main">
         <h2 class="ms-font-xl">Please sideload your add-in to see app body.</h2>
     </section>
-    <main id="app-body" class="ms-welcome__main" style="display: none;">
+    <template id="chat-template">
+        <p name="chat-entry-holder" class="chat-entry">
+            <label name="chat-ts" class="entry-ctx" style="display: block"></label>
+            <label name="chat-id" class="entry-ctx" style="display: none"></label>
+            <label name="chat-changekey" class="entry-ctx" style="display: none"></label>
+            <label name="chat-content" class="entry-content" style="display: block"></label>
+        </p>
+    </template>
+    <main id="app-body" class="ms-welcome__main list" style="display: none;">
         <!--<h2 class="ms-font-xl"> Discover what Office Add-ins can do for you today! </h2>-->
-        <template id="chat-template"><p><label name="chat-entry"></label></p></template>
         <!--
         <div role="button" id="run" class="ms-welcome__action ms-Button ms-Button--hero ms-font-xl">
             <span class="ms-Button-label">Run</span>
         </div>
         -->
     </main>
+    <footer class="quick-reply">
+        <form action="#" onsubmit="return submitMsg(this)" class="sendbox">
+            <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
+            <input id="sendbtn" type="submit" value="Send">
+        </form>
+    </footer>
     <script type="text/javascript" src="../../node_modules/jquery/dist/jquery.js"></script>
 </body>
 

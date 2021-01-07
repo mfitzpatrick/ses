@@ -9,20 +9,52 @@ import "../../assets/icon-32.png";
 import "../../assets/icon-80.png";
 
 /* global document, Office */
-
 Office.onReady(info => {
-  if (info.host === Office.HostType.Outlook) {
-    document.getElementById("sideload-msg").style.display = "none";
-    document.getElementById("app-body").style.display = "flex";
-    // document.getElementById("run").onclick = run;
-    run();
-  }
+    if (info.host === Office.HostType.Outlook) {
+        document.getElementById("sideload-msg").style.display = "none";
+        document.getElementById("app-body").style.display = "flex";
+        run();
+    }
 });
 
+/*
+ * When the document is initialised, run this function to register a handler that will execute
+ * when the read-email-context changes.
+ */
+Office.initialize = function(reason) {
+    $(document).ready(function() {
+        Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, function(eventArgs) {
+            run();
+        });
+    });
+}
+
+/*
+ * Main handler function for this task pane. Fetch all messages related to the currently-selected
+ * message and display them in the pane.
+ */
 export async function run() {
     // Get a reference to the current message
     var item = Office.context.mailbox.item;
-    getRelatedMsgs(item.from.emailAddress);
+    if (null == item) {
+        console.log("No mailbox item");
+    } else {
+        updateSenderContext(item.from);
+        getRelatedMsgs(item.from.emailAddress);
+    }
+}
+
+/*
+ * Update the sender-information context fields at the top of the pane.
+ */
+function updateSenderContext(from) {
+    var currentAddr = document.querySelector("#contact-email");
+    if (from.emailAddress != currentAddr.textContent) {
+        //clear the list
+        document.querySelector("#app-body").innerHTML = '';
+    }
+    document.querySelector("#contact-name").textContent = from.displayName;
+    currentAddr.textContent = from.emailAddress;
 }
 
 /*
@@ -45,6 +77,9 @@ function wrapRequest(request) {
 
 /*
  * Get a recent history of messages related to the specified contact.
+ * This function uses an EWS request to search for all messages containing the emailAddr specified.
+ * For all messages found, it extracts the ID and key values, then performs a second EWS request
+ * to retrieve the message bodies.
  */
 function getRelatedMsgs(emailAddr) {
     var request = wrapRequest(
@@ -61,7 +96,6 @@ function getRelatedMsgs(emailAddr) {
     );
 
     Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-        console.log("EWS:", result);
         var response = $.parseXML(result.value);
         var msgs = response.getElementsByTagName("t:Message");
         var idTuples = [];
@@ -78,9 +112,15 @@ function getRelatedMsgs(emailAddr) {
 /*
  * Retrieve full message information (including body text) for the list of message IDs passed
  * in to this function.
+ * This function uses an EWS request to search for all messages with the specified ID and key.
+ * The returned message contents are then parsed to extract information like the sender's email
+ * address, timestamp, and contents. For each message received, it will try to add a new chat entry
+ * to the page.
+ *
  * The idTuples object should be an array of [msgID, changeKey] objects.
  */
 function getMsgBodies(idTuples) {
+    var contactAddr = document.querySelector("#contact-email").textContent;
     var idList = ""
     for (let item of idTuples) {
         idList += '<t:ItemId Id="' + item[0] + '" ChangeKey="' + item[1] + '" />';
@@ -98,28 +138,84 @@ function getMsgBodies(idTuples) {
     );
 
     Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-        console.log("Message:", result);
         var response = $.parseXML(result.value);
         var msgs = response.getElementsByTagName("t:Message");
         var idTuples = [];
         for (let item of msgs) {
+            //re-retrieve useful information like ID, key, send-timestmp, and 'from' email address
+            var id = item.getElementsByTagName("t:ItemId")[0];
+            var msgID = id.getAttribute("Id");
+            var changeKey = id.getAttribute("ChangeKey");
+            var fromMailbox = item.getElementsByTagName("t:From")[0];
+            var fromAddr = fromMailbox.getElementsByTagName("t:EmailAddress")[0].textContent;
+            var isFromMe = (fromAddr.localeCompare(contactAddr) == 0) ? false : true;
+            var ts = item.getElementsByTagName("t:DateTimeSent")[0].textContent;
+            //read the body contents. Make sure it's not too large.
             var body = item.getElementsByTagName("t:Body")[0].textContent;
-            if (body.length > 100) {
-                body = body.substring(0, 100);
+            if (body.length > 1000) {
+                body = body.substring(0, 1000);
             }
-            addChatEntry(body);
+            //add email item to the chat list if required
+            addChatEntry(msgID, changeKey, body, ts, isFromMe);
         }
     });
 }
 
 /*
- * Add chat item's contents to the sidebar. Clone the template node, fill it in, and append it
- * to the parent node.
+ * Add chat item's contents to the sidebar. Clone the template node, fill it in, and insert it
+ * in the correct timestamp order in the parent node.
+ * This function will first check if a chat item with the same ID and key already exists. If one
+ * is found, it will abort. If one is not found, we will create a new chat entry item and insert
+ * it in the correct location in the list (using timestamp-ordering).
  */
-function addChatEntry(body) {
-    var template = document.querySelector("#chat-template");
-    var clone = template.content.cloneNode(true);
-    clone.querySelector("[name=chat-entry]").textContent = body;
-    document.querySelector("#app-body").appendChild(clone);
+function addChatEntry(id, changeKey, body, ts, isFromMe) {
+    //chat-entry builder helper function
+    function buildChatEntry() {
+        var template = document.querySelector("#chat-template");
+        var clone = template.content.cloneNode(true);
+        var entry = clone.querySelector("[name=chat-entry-holder]");
+        if (isFromMe) {
+            entry.classList.add("chat-entry-tx");
+        } else {
+            entry.classList.add("chat-entry-rx");
+        }
+        clone.querySelector("[name=chat-content]").textContent = body;
+        clone.querySelector("[name=chat-ts]").textContent = ts;
+        clone.querySelector("[name=chat-id]").textContent = id;
+        clone.querySelector("[name=chat-changekey]").textContent = changeKey;
+        return clone;
+    }
+
+    //Check for duplicate items. Set a flag to indicate if a duplicate is found, and set a refItem
+    //if we find a location to add this in the list of children.
+    var refItem = null;
+    var isDuplicate = false; //another entry with the same ID is found
+    var entryDate = new Date(ts);
+    var existingEntries = document.getElementsByName("chat-entry-holder");
+    for (var i = 0; i < existingEntries.length; i++) {
+        if (id.localeCompare(existingEntries[i].querySelector("[name=chat-id]").textContent) == 0 &&
+            changeKey.localeCompare(existingEntries[i].querySelector("[name=chat-changekey]").textContent) == 0) {
+                isDuplicate = true;
+                break;
+        }
+        if (refItem == null &&
+                entryDate < new Date(existingEntries[i].querySelector("[name=chat-ts]").textContent)) {
+            //The new chat entry item should go before this one
+            refItem = existingEntries[i];
+        }
+    }
+
+    //Add the new chat entry item if no duplicates were found
+    if (!isDuplicate) {
+        var clone = buildChatEntry();
+        var chatView = document.querySelector("#app-body");
+        if (refItem == null) {
+            //there are currently no children, so just append
+            chatView.appendChild(clone);
+        } else {
+            chatView.insertBefore(clone, refItem);
+        }
+        chatView.scrollTop = chatView.scrollHeight;
+    }
 }
 
