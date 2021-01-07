@@ -18,26 +18,6 @@
 
     <!-- Template styles -->
     <link href="taskpane.css" rel="stylesheet" type="text/css" />
-
-    <script type="text/javascript">
-        // Set the message sending handler.
-        function submitMsg(theForm) {
-            var msgtext = document.querySelector("#composebox").value.trim();
-            if (msgtext.len == 0) {
-                console.log("No message has been composed in the text area");
-            } else {
-                sendMail(chat_user, msgtext, function(didSendSuccessfully) {
-                    if (didSendSuccessfully) {
-                        document.querySelector("#composebox").value = "";
-                    }
-                });
-                //scroll to bottom of window
-                var chatView = document.querySelector("#chat_section");
-                chatView.scrollTop = chatView.scrollHeight;
-            }
-            return false;
-        };
-    </script>
 </head>
 
 <body class="ms-font-m ms-welcome ms-Fabric">
@@ -67,7 +47,7 @@
         -->
     </main>
     <footer class="quick-reply">
-        <form action="#" onsubmit="return submitMsg(this)" class="sendbox">
+        <form id="quick-reply-form" action="#" class="sendbox">
             <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
             <input id="sendbtn" type="submit" value="Send">
         </form>

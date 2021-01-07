@@ -13,6 +13,7 @@ Office.onReady(info => {
     if (info.host === Office.HostType.Outlook) {
         document.getElementById("sideload-msg").style.display = "none";
         document.getElementById("app-body").style.display = "flex";
+        document.getElementById("quick-reply-form").onsubmit = submitMsg;
         run();
     }
 });
@@ -217,5 +218,63 @@ function addChatEntry(id, changeKey, body, ts, isFromMe) {
         }
         chatView.scrollTop = chatView.scrollHeight;
     }
+}
+
+/*
+ * Send an email message using the EWS feature. This will create a new email object, configure the
+ * recipient as the current contact's information, and actually send it. When this function is
+ * complete it will call the configured callback so the UI can be updated.
+ */
+function sendMail(body, cb) {
+    var contactAddr = document.querySelector("#contact-email").textContent;
+    var request = wrapRequest(
+        '<m:CreateItem MessageDisposition="SendAndSaveCopy">' +
+        ' <m:SavedItemFolderId>' +
+        '  <t:DistinguishedFolderId Id="sentitems" />' +
+        ' </m:SavedItemFolderId>' +
+        ' <m:Items>' +
+        '  <t:Message>' +
+        '   <t:Subject>SMS</t:Subject>' +
+        '   <t:Body>' + body + '</t:Body>' +
+        '   <t:ToRecipients>' +
+        '    <t:Mailbox><t:EmailAddress>' + contactAddr + '</t:EmailAddress></t:Mailbox>' +
+        '   </t:ToRecipients>' +
+        '  </t:Message>' +
+        ' </m:Items>' +
+        '</m:CreateItem>'
+    );
+
+    Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
+        console.log("SentMail:", result);
+        var response = $.parseXML(result.value);
+        var respCode = response.getElementsByTagName("m:ResponseCode");
+        if (respCode.textContent.localeCompare("NoError") == 0) {
+            cb(true);
+        } else {
+            cb(false);
+        }
+    });
+}
+
+/*
+ * This is the event-handler function which runs when the quick-sending form is submitted. It gets
+ * the form data, packages it, and calls the sendMail function to actually send it. When the send
+ * is complete, it uses a callback to clear the text field and amend the scroll.
+ */
+function submitMsg(theForm) {
+    var msgtext = document.querySelector("#composebox").value.trim();
+    if (msgtext.len == 0) {
+        console.log("No message has been composed in the text area");
+    } else {
+        sendMail(msgtext, function(didSendSuccessfully) {
+            if (didSendSuccessfully) {
+                document.querySelector("#composebox").value = "";
+            }
+        });
+        //scroll to bottom of window
+        var chatView = document.querySelector("#app-body");
+        chatView.scrollTop = chatView.scrollHeight;
+    }
+    return false;
 }
 
