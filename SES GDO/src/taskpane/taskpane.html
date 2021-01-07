@@ -8,7 +8,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Contoso Task Pane Add-in</title>
+    <title>SES GDO Add-in</title>
 
     <!-- Office JavaScript API -->
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
@@ -22,14 +22,9 @@
 
 <body class="ms-font-m ms-welcome ms-Fabric">
     <header class="ms-welcome__header ms-bgColor-neutralLighter">
-        <!--<img width="90" height="90" src="../../assets/logo-filled.png" alt="Contoso" title="Contoso" />
-        <h1 class="ms-font-su">Welcome</h1>-->
         <label id="contact-name"></label>
         <label id="contact-email"></label>
     </header>
-    <section id="sideload-msg" class="ms-welcome__main">
-        <h2 class="ms-font-xl">Please sideload your add-in to see app body.</h2>
-    </section>
     <template id="chat-template">
         <p name="chat-entry-holder" class="chat-entry">
             <label name="chat-ts" class="entry-ctx" style="display: block"></label>
@@ -38,21 +33,38 @@
             <label name="chat-content" class="entry-content" style="display: block"></label>
         </p>
     </template>
-    <main id="app-body" class="ms-welcome__main list" style="display: none;">
-        <!--<h2 class="ms-font-xl"> Discover what Office Add-ins can do for you today! </h2>-->
-        <!--
-        <div role="button" id="run" class="ms-welcome__action ms-Button ms-Button--hero ms-font-xl">
-            <span class="ms-Button-label">Run</span>
-        </div>
-        -->
+    <main id="app-body" class="ms-welcome__main list">
+        <!-- Programmatically filled from the template object above -->
     </main>
     <footer class="quick-reply">
-        <form id="quick-reply-form" action="#" class="sendbox">
-            <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
-            <input id="sendbtn" type="submit" value="Send">
+        <form id="quick-reply-form" action="#" class="quickreply">
+            <div id="msg-options" style="display: none">
+                <label for="recipients">Recipients:</label>
+                <select id="msg-recipients" name="recipients" id="recipients-selector">
+                    <option value="contact" selected>Current Contact</option>
+                    <option value="col">Call-Out List</option>
+                </select>
+                <label for="msg-template">Template:</label>
+                <select id="msg-template" name="msg-template">
+                    <option value="none" selected>None</option>
+                    <option value="storm">Lean Forward (STORM)</option>
+                    <option value="lean">Lean Forward</option>
+                    <option value="standup">Stand Up</option>
+                    <option value="standdown">Stand Down</option>
+                    <option value="sitrep">Sitrep</option>
+                </select>
+            </div>
+            <div class="sendbox">
+                <textarea id="composebox" name="composebox" placeholder="Send a message"></textarea>
+                <div class="button-container">
+                    <button id="expand-options" class="button" type="button">...</button>
+                    <input id="sendbtn" class="button" type="submit" value="Send">
+                </div>
+            </div>
         </form>
     </footer>
     <script type="text/javascript" src="../../node_modules/jquery/dist/jquery.js"></script>
 </body>
 
 </html>
+

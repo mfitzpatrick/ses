@@ -11,8 +11,8 @@ import "../../assets/icon-80.png";
 /* global document, Office */
 Office.onReady(info => {
     if (info.host === Office.HostType.Outlook) {
-        document.getElementById("sideload-msg").style.display = "none";
-        document.getElementById("app-body").style.display = "flex";
+        document.getElementById("expand-options").onclick = toggleMsgOptions;
+        document.getElementById("msg-template").onchange = setTemplate;
         document.getElementById("quick-reply-form").onsubmit = submitMsg;
         run();
     }
@@ -180,6 +180,7 @@ function getMsgBodies(idTuples) {
             var body = item.getElementsByTagName("t:Body")[0].textContent;
             //truncate the legal disclaimer added by some mail services
             body = truncateBody(body, "This correspondence is for the named");
+            body = truncateBody(body, "-#-");
             //search for forwarded-message identifiers
             body = truncateBody(body, "---------- Forwarded message");
             if (body.length > 1000) {
@@ -237,19 +238,32 @@ function addChatEntry(id, changeKey, body, ts, isFromMe) {
     //Check for duplicate items. Set a flag to indicate if a duplicate is found, and set a refItem
     //if we find a location to add this in the list of children.
     var refItem = null;
+    var toDelete = null;
     var isDuplicate = false; //another entry with the same ID is found
     var existingEntries = document.getElementsByName("chat-entry-holder");
     for (var i = 0; i < existingEntries.length; i++) {
+        //check for empty ID
+        if (existingEntries[i].querySelector("[name=chat-id]").textContent.length == 0) {
+            //this is a fake item, remove it
+            toDelete = existingEntries[i].querySelector("[name=chat-id]").parentElement;
+        }
+        //check for duplicate ID
         if (id.localeCompare(existingEntries[i].querySelector("[name=chat-id]").textContent) == 0 &&
             changeKey.localeCompare(existingEntries[i].querySelector("[name=chat-changekey]").textContent) == 0) {
                 isDuplicate = true;
                 break;
         }
+        //find closest chat entry (via date)
         if (refItem == null &&
                 entryDate < new Date(existingEntries[i].querySelector("[name=chat-ts]").textContent)) {
             //The new chat entry item should go before this one
             refItem = existingEntries[i];
         }
+    }
+
+    //delete null-ID item in the hope that it has just been filled by a most-recent get
+    if (toDelete != null) {
+        toDelete.remove();
     }
 
     //Add the new chat entry item if no duplicates were found
@@ -280,8 +294,8 @@ function sendMail(body, cb) {
         ' </m:SavedItemFolderId>' +
         ' <m:Items>' +
         '  <t:Message>' +
-        '   <t:Subject>SMS</t:Subject>' +
-        '   <t:Body>' + body + '</t:Body>' +
+        '   <t:Subject>GDO SMS</t:Subject>' +
+        '   <t:Body BodyType="Text">' + body + '\n-#-</t:Body>' +
         '   <t:ToRecipients>' +
         '    <t:Mailbox><t:EmailAddress>' + contactAddr + '</t:EmailAddress></t:Mailbox>' +
         '   </t:ToRecipients>' +
@@ -314,7 +328,13 @@ function submitMsg(theForm) {
     } else {
         sendMail(msgtext, function(didSendSuccessfully) {
             if (didSendSuccessfully) {
+                //update msg context list
+                addChatEntry("", "", document.querySelector("#composebox").value, new Date(), true);
+                //clean up UI
                 document.querySelector("#composebox").value = "";
+                document.querySelector("#msg-options").style.display = "none";
+                document.querySelector("#msg-template").value = "none";
+                document.querySelector("#msg-recipients").value = "contact";
             }
         });
         //scroll to bottom of window
@@ -322,5 +342,67 @@ function submitMsg(theForm) {
         chatView.scrollTop = chatView.scrollHeight;
     }
     return false;
+}
+
+/*
+ * Toggles the display-state of the msg-options div. This allows us to keep the custom message
+ * options hidden under normal circumstances, and display them only if the user chooses to.
+ */
+function toggleMsgOptions() {
+    var opt = document.querySelector("#msg-options");
+    var isOpen = (opt.style.display.localeCompare("flex") == 0);
+    if (isOpen) {
+        opt.style.display = "none";
+    } else {
+        opt.style.display = "flex";
+    }
+}
+
+/*
+ * This event handler is called when the msg-template pick-list selected item is changed. The item
+ * newly selected defines the message template that will be used.
+ * The message template is set in the Compose Box before the function returns.
+ */
+function setTemplate() {
+    var tmpl = '';
+    var now = new Date();
+    var datestr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}-` +
+        `${now.getHours().toString().padStart(2, "0")}` +
+        `:${now.getMinutes().toString().padStart(2, "0")}`;
+    //Take an educated guess at a suitable reply-by time so we can prefill it.
+    var inOneHr = new Date(now.getTime() + (1 * 60 * 60 * 1000));
+    var replyByTimeStr = `${inOneHr.getHours().toString().padStart(2, "0")}` +
+        `:${inOneHr.getMinutes().toString().padStart(2, "0")}`;
+    var iam = Office.context.mailbox.userProfile.displayName;
+    var templateOption = document.getElementById("msg-template");
+    switch (templateOption.value) {
+        case "storm":
+            tmpl = `SES - LEANFORWARD - ${datestr} - DETAILS - Reply ASAP` +
+                ` with Name, ID Number, and Qualifications and await further instructions.` +
+                ` Thanks GDO ${iam.split(" ")[0]}`;
+            break;
+        case "lean":
+            tmpl = `SES - LEANFORWARD - ${datestr} - DETAILS - Reply by ${replyByTimeStr}` +
+                ` with Name, ID Number, and Qualifications and await further instructions.` +
+                ` Thanks GDO ${iam.split(" ")[0]}`;
+            break;
+        case "standup":
+            tmpl = `SES - STANDUP - ${datestr} - Please proceed to East HQ by ${replyByTimeStr}.` +
+                ` You will be in team NUM. Please acknowledge this message.` +
+                ` Thanks GDO ${iam.split(" ")[0]}`;
+            break;
+        case "standdown":
+            tmpl = `SES - STANDDOWN - ${datestr} - Thankyou for taking the time to reply.` +
+                ` Thanks GDO ${iam.split(" ")[0]}`;
+            break;
+        case "sitrep":
+            tmpl = `SES - SITREP - ${datestr} - DETAILS.` +
+                ` Thanks GDO ${iam.split(" ")[0]}`;
+            break;
+        default:
+            tmpl = '';
+            break;
+    }
+    document.querySelector("#composebox").value = tmpl;
 }
 

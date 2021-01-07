@@ -107,6 +107,10 @@ b {
     overflow-wrap: break-word;
 }
 
+.quickreply #msg-options {
+    flex-flow: column nowrap;
+}
+
 .sendbox {
     width: 100%;
     height: 100px;
@@ -118,9 +122,18 @@ b {
     width: 90%;
 }
 
-.sendbox button {
+.sendbox .button-container {
+    flex-flow: column nowrap;
+    width: 15%;
     height: 100%;
-    width: 10%;
+}
+
+.sendbox .button {
+    height: 50%;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 footer {
