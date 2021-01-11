@@ -76,6 +76,15 @@ function updateSenderContext(contact) {
 }
 
 /*
+ * Handle the error that occurred.
+ * This will log information about the error to the console.
+ * This will forward error information to a section where it will be monitored.
+ */
+function ehandle(context, req, resp) {
+    console.log(`Error occurred in ${context} with req:`, req, "\nand resp:", resp);
+}
+
+/*
  * Wrap 'request' SOAP XML in a SOAP envelope for sending via EWS.
  */
 function wrapRequest(request) {
@@ -119,6 +128,10 @@ function getRelatedMsgs(emailAddr) {
 
         Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
             var response = $.parseXML(result.value);
+            if (response == null) {
+                ehandle("getRelatedMsgs result object", request, result);
+                return undefined;
+            }
             var msgs = response.getElementsByTagName("t:Message");
             var idTuples = [];
             for (let item of msgs) {
@@ -127,7 +140,9 @@ function getRelatedMsgs(emailAddr) {
                 var changeKey = id.getAttribute("ChangeKey");
                 idTuples.push([msgID, changeKey]);
             }
-            getMsgBodies(idTuples);
+            if (idTuples.length > 0) {
+                getMsgBodies(idTuples);
+            }
         });
     }
 }
@@ -165,6 +180,10 @@ function getMsgBodies(idTuples) {
 
     Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
         var response = $.parseXML(result.value);
+        if (response == null) {
+            ehandle("getMsgBodies result object", request, result);
+            return undefined;
+        }
         var msgs = response.getElementsByTagName("t:Message");
         var idTuples = [];
         for (let item of msgs) {
@@ -183,6 +202,7 @@ function getMsgBodies(idTuples) {
             body = truncateBody(body, "-#-");
             //search for forwarded-message identifiers
             body = truncateBody(body, "---------- Forwarded message");
+            body = truncateBody(body, "----- Original Message -----");
             if (body.length > 1000) {
                 //cut off messages that are significantly long
                 body = body.substring(0, 1000);
@@ -281,12 +301,56 @@ function addChatEntry(id, changeKey, body, ts, isFromMe) {
 }
 
 /*
+ * Retrieves all email addresses from a group named COL in the current user's contacts section.
+ */
+function getCOL(cb) {
+    var request = wrapRequest(
+        '<m:FindPeople>' +
+        ' <m:IndexedPageItemView BasePoint="Beginning" MaxEntriesReturned="500" Offset="0" />' +
+        ' <m:ParentFolderId>' +
+        '  <t:DistinguishedFolderId Id="contacts" />' +
+        ' </m:ParentFolderId>' +
+        '</m:FindPeople>'
+    );
+
+    Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
+        var col = [];
+        console.log("Retrieved COL:", result);
+        var response = $.parseXML(result.value);
+        var respCode = response.getElementsByTagName("ResponseCode")[0];
+        if (respCode.textContent.localeCompare("NoError") != 0) {
+            ehandle("getCOL had an error", request, result);
+            return undefined;
+        }
+        var contacts = response.getElementsByTagName("Persona");
+        for (let item of contacts) {
+            //find all instances of EmailAddress (even nested instances)
+            var emails = item.getElementsByTagName("EmailAddress");
+            console.log("COL emails:", emails);
+            for (let email of emails) {
+                //Check if the text node contains this domain name
+                if (email.textContent.endsWith("bccdisastermanage.sms.optus.com.au")) {
+                    console.log("Relevant email:", email.textContent);
+                    col.push(email.textContent);
+                }
+            }
+        }
+        if (cb != null) {
+            cb(col);
+        }
+    });
+}
+
+/*
  * Send an email message using the EWS feature. This will create a new email object, configure the
  * recipient as the current contact's information, and actually send it. When this function is
  * complete it will call the configured callback so the UI can be updated.
  */
-function sendMail(body, cb) {
-    var contactAddr = document.querySelector("#contact-email").textContent;
+function sendMail(contactList, body, cb) {
+    var cList = ""
+    for (let item of contactList) {
+        cList += '<t:Mailbox><t:EmailAddress>' + item + '</t:EmailAddress></t:Mailbox>';
+    }
     var request = wrapRequest(
         '<m:CreateItem MessageDisposition="SendAndSaveCopy">' +
         ' <m:SavedItemFolderId>' +
@@ -296,9 +360,7 @@ function sendMail(body, cb) {
         '  <t:Message>' +
         '   <t:Subject>GDO SMS</t:Subject>' +
         '   <t:Body BodyType="Text">' + body + '\n-#-</t:Body>' +
-        '   <t:ToRecipients>' +
-        '    <t:Mailbox><t:EmailAddress>' + contactAddr + '</t:EmailAddress></t:Mailbox>' +
-        '   </t:ToRecipients>' +
+        '   <t:ToRecipients>' + cList + '</t:ToRecipients>' +
         '  </t:Message>' +
         ' </m:Items>' +
         '</m:CreateItem>'
@@ -322,25 +384,32 @@ function sendMail(body, cb) {
  * is complete, it uses a callback to clear the text field and amend the scroll.
  */
 function submitMsg(theForm) {
+    function doCleanup(didSendSuccessfully) {
+        if (didSendSuccessfully) {
+            //update msg context list
+            addChatEntry("", "", document.querySelector("#composebox").value, new Date(), true);
+            //clean up UI
+            document.querySelector("#composebox").value = "";
+            document.querySelector("#msg-options").style.display = "none";
+            document.querySelector("#msg-template").value = "none";
+            document.querySelector("#msg-recipients").value = "contact";
+        }
+    }
+
     var msgtext = document.querySelector("#composebox").value.trim();
     if (msgtext.len == 0) {
         console.log("No message has been composed in the text area");
-    } else {
-        sendMail(msgtext, function(didSendSuccessfully) {
-            if (didSendSuccessfully) {
-                //update msg context list
-                addChatEntry("", "", document.querySelector("#composebox").value, new Date(), true);
-                //clean up UI
-                document.querySelector("#composebox").value = "";
-                document.querySelector("#msg-options").style.display = "none";
-                document.querySelector("#msg-template").value = "none";
-                document.querySelector("#msg-recipients").value = "contact";
-            }
+    } else if (document.querySelector("#msg-recipients").value.localeCompare("col") == 0) {
+        getCOL(function(col) {
+            sendMail(col, msgtext, doCleanup);
         });
-        //scroll to bottom of window
-        var chatView = document.querySelector("#app-body");
-        chatView.scrollTop = chatView.scrollHeight;
+    } else {
+        var contactAddr = document.querySelector("#contact-email").textContent;
+        sendMail([contactAddr], msgtext, doCleanup);
     }
+    //scroll to bottom of window
+    var chatView = document.querySelector("#app-body");
+    chatView.scrollTop = chatView.scrollHeight;
     return false;
 }
 
@@ -396,7 +465,7 @@ function setTemplate() {
                 ` Thanks GDO ${iam.split(" ")[0]}`;
             break;
         case "sitrep":
-            tmpl = `SES - SITREP - ${datestr} - DETAILS.` +
+            tmpl = `SES - SITREP - ${datestr} - Eastern teams deployed as-per TAMS.` +
                 ` Thanks GDO ${iam.split(" ")[0]}`;
             break;
         default:
