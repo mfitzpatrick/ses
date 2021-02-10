@@ -85,133 +85,66 @@ function ehandle(context, req, resp) {
 }
 
 /*
- * Wrap 'request' SOAP XML in a SOAP envelope for sending via EWS.
+ * Helper function to get the valid REST item ID for a given item. This performs the ID conversion
+ * process if necessary before returning the ID. It can be used in REST API calls.
  */
-function wrapRequest(request) {
-    var wrapped =
-        '<?xml version="1.0" encoding="utf-8"?>' +
-        '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' +
-        '               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"' +
-        '               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"' +
-        '               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">' +
-        '  <soap:Header><t:RequestServerVersion Version="Exchange2013" /></soap:Header>' +
-        '  <soap:Body>' +
-             request +
-        '  </soap:Body>' +
-        '</soap:Envelope>';
-    return wrapped;
+function getItemRestId() {
+    console.log("Hostname is:", Office.context.mailbox.diagnostics.hostName);
+    if (Office.context.mailbox.diagnostics.hostName === 'OutlookAndroid') {
+        // itemId is already REST-formatted.
+        return Office.context.mailbox.item.itemId;
+    } else {
+        // Convert to an item ID for API v2.0.
+        return Office.context.mailbox.convertToRestId(
+            Office.context.mailbox.item.itemId,
+            Office.MailboxEnums.RestVersion.v2_0);
+    }
 }
 
 /*
  * Get a recent history of messages related to the specified contact.
- * This function uses an EWS request to search for all messages containing the emailAddr specified.
- * For all messages found, it extracts the ID and key values, then performs a second EWS request
- * to retrieve the message bodies.
- *
- * There are multiple folders that need to be searched (inbox and sent-items). This will create 2
- * separate EWS messages to search these folders.
+ * For each message received, add a new chat entry to the UI via the addChatEntry() function call.
+ * This uses the REST API to perform a search over the whole mailbox, and returns the messages
+ * found to include the given email address.
  */
 function getRelatedMsgs(emailAddr) {
-    var folderlist = ["inbox", "sentitems"];
-    for (let folder of folderlist) {
-        var request = wrapRequest(
-            '<m:FindItem>' +
-            '  <m:ItemShape>' +
-            '    <t:BaseShape>IdOnly</t:BaseShape>' +
-            '  </m:ItemShape>' +
-            '  <m:ParentFolderIds>' +
-            '    <t:DistinguishedFolderId Id="' + folder + '" />' +
-            '  </m:ParentFolderIds>' +
-            '  <m:QueryString>Participants:' + emailAddr + '</m:QueryString>' +
-            '</m:FindItem>'
-        );
-
-        Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-            var response = $.parseXML(result.value);
-            if (response == null) {
-                ehandle("getRelatedMsgs result object", request, result);
-                return undefined;
-            }
-            var msgs = response.getElementsByTagName("t:Message");
-            var idTuples = [];
-            for (let item of msgs) {
-                var id = item.getElementsByTagName("t:ItemId")[0];
-                var msgID = id.getAttribute("Id");
-                var changeKey = id.getAttribute("ChangeKey");
-                idTuples.push([msgID, changeKey]);
-            }
-            if (idTuples.length > 0) {
-                getMsgBodies(idTuples);
-            }
-        });
-    }
-}
-
-/*
- * Retrieve full message information (including body text) for the list of message IDs passed
- * in to this function.
- * This function uses an EWS request to search for all messages with the specified ID and key.
- * The returned message contents are then parsed to extract information like the sender's email
- * address, timestamp, and contents. For each message received, it will try to add a new chat entry
- * to the page.
- *
- * The idTuples object should be an array of [msgID, changeKey] objects.
- */
-function getMsgBodies(idTuples) {
     var myAddr = Office.context.mailbox.userProfile.emailAddress;
-    var idList = ""
-    for (let item of idTuples) {
-        idList += '<t:ItemId Id="' + item[0] + '" ChangeKey="' + item[1] + '" />';
-    }
-    var request = wrapRequest(
-        '<m:GetItem>' +
-        '  <m:ItemShape>' +
-        '    <t:BaseShape>Default</t:BaseShape>' +
-        '    <t:BodyType>Text</t:BodyType>' +
-        '    <t:AdditionalProperties>' +
-        '      <t:FieldURI FieldURI="item:IsFromMe" />' +
-        '    </t:AdditionalProperties>' +
-        '  </m:ItemShape>' +
-        '  <m:ItemIds>' +
-             idList +
-        '  </m:ItemIds>' +
-        '</m:GetItem>'
-    );
-
-    Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-        var response = $.parseXML(result.value);
-        if (response == null) {
-            ehandle("getMsgBodies result object", request, result);
-            return undefined;
-        }
-        var msgs = response.getElementsByTagName("t:Message");
-        var idTuples = [];
-        for (let item of msgs) {
-            //re-retrieve useful information like ID, key, send-timestmp, and 'from' email address
-            var id = item.getElementsByTagName("t:ItemId")[0];
-            var msgID = id.getAttribute("Id");
-            var changeKey = id.getAttribute("ChangeKey");
-            var fromMailbox = item.getElementsByTagName("t:From")[0];
-            var fromAddr = fromMailbox.getElementsByTagName("t:EmailAddress")[0].textContent;
-            var isFromMe = (fromAddr.localeCompare(myAddr) == 0);
-            var ts = item.getElementsByTagName("t:DateTimeSent")[0].textContent;
-            //read the body contents. Make sure it's not too large.
-            var body = item.getElementsByTagName("t:Body")[0].textContent;
-            //truncate the legal disclaimer added by some mail services
-            body = truncateBody(body, "This correspondence is for the named");
-            body = truncateBody(body, "-#-");
-            //search for forwarded-message identifiers
-            body = truncateBody(body, "---------- Forwarded message");
-            body = truncateBody(body, "----- Original Message -----");
-            if (body.length > 1000) {
-                //cut off messages that are significantly long
-                body = body.substring(0, 1000);
-            }
-            body = body.trim();
-            if (body.length > 0) {
-                //add email item to the chat list if required
-                addChatEntry(msgID, changeKey, body, ts, isFromMe);
-            }
+    Office.context.mailbox.getCallbackTokenAsync({isRest: true}, function(result){
+        var uriEmailAddr = encodeURIComponent(emailAddr); //url-encode email address for query string
+        if (result.status === "succeeded") {
+            $.ajax({
+                url: Office.context.mailbox.restUrl + `/v2.0/me/messages?$search="participants:${uriEmailAddr}"&$top=30`,
+                dataType: 'json',
+                headers: {'Authorization': 'Bearer ' + result.value},
+            }).done(function(item) {
+                console.log("search ajax returned:", item);
+                for (let msg of item.value) {
+                    //retrieve useful information like ID, key, send-timestmp, and 'from' email address
+                    var isFromMe = (msg.Sender.EmailAddress.Address.localeCompare(myAddr) == 0);
+                    //read the body contents. Make sure it's not too large.
+                    var body = msg.Body.Content;
+                    //truncate the legal disclaimer added by some mail services
+                    body = truncateBody(body, "This correspondence is for the named");
+                    body = truncateBody(body, "-#-");
+                    //search for forwarded-message identifiers
+                    body = truncateBody(body, "---------- Forwarded message");
+                    body = truncateBody(body, "----- Original Message -----");
+                    if (body.length > 1000) {
+                        //cut off messages that are significantly long
+                        body = body.substring(0, 1000);
+                    }
+                    body = body.trim();
+                    if (body.length > 0) {
+                        //add email item to the chat list if required
+                        addChatEntry(msg.Id, msg.ChangeKey, body, msg.CreatedDateTime, isFromMe);
+                    }
+                }
+            }).fail(function(error) {
+                console.log("ajax failed:", error);
+            });
+        } else {
+            // Handle the error.
+            console.log("error happened:", result);
         }
     });
 }
@@ -304,76 +237,71 @@ function addChatEntry(id, changeKey, body, ts, isFromMe) {
  * Retrieves all email addresses from a group named COL in the current user's contacts section.
  */
 function getCOL(cb) {
-    var request = wrapRequest(
-        '<m:FindPeople>' +
-        ' <m:IndexedPageItemView BasePoint="Beginning" MaxEntriesReturned="500" Offset="0" />' +
-        ' <m:ParentFolderId>' +
-        '  <t:DistinguishedFolderId Id="contacts" />' +
-        ' </m:ParentFolderId>' +
-        '</m:FindPeople>'
-    );
-
-    Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-        var col = [];
-        console.log("Retrieved COL:", result);
-        var response = $.parseXML(result.value);
-        var respCode = response.getElementsByTagName("ResponseCode")[0];
-        if (respCode.textContent.localeCompare("NoError") != 0) {
-            ehandle("getCOL had an error", request, result);
-            return undefined;
-        }
-        var contacts = response.getElementsByTagName("Persona");
-        for (let item of contacts) {
-            //find all instances of EmailAddress (even nested instances)
-            var emails = item.getElementsByTagName("EmailAddress");
-            console.log("COL emails:", emails);
-            for (let email of emails) {
-                //Check if the text node contains this domain name
-                if (email.textContent.endsWith("bccdisastermanage.sms.optus.com.au")) {
-                    console.log("Relevant email:", email.textContent);
-                    col.push(email.textContent);
+    var searchDomain = "bccdisastermanage.sms.optus.com.au";
+    Office.context.mailbox.getCallbackTokenAsync({isRest: true}, function(result){
+        var uriEmailAddr = encodeURIComponent(emailAddr); //url-encode email address for query string
+        if (result.status === "succeeded") {
+            $.ajax({
+                url: Office.context.mailbox.restUrl + `/v2.0/me/people?$search="${searchDomain}"&$top=300`,
+                dataType: 'json',
+                headers: {'Authorization': 'Bearer ' + result.value},
+            }).done(function(item) {
+                console.log("people search ajax returned:", item);
+                for (let email of item.value) {
+                    //Check if the text node contains this domain name
+                    if (email.textContent.endsWith(searchDomain)) {
+                        console.log("Relevant email:", email.textContent);
+                        col.push(email.textContent);
+                    }
                 }
-            }
-        }
-        if (cb != null) {
-            cb(col);
+                if (cb != null) {
+                    cb(col);
+                }
+            });
         }
     });
 }
 
 /*
- * Send an email message using the EWS feature. This will create a new email object, configure the
- * recipient as the current contact's information, and actually send it. When this function is
+ * Send an email message. This will create a new email object, configure the
+ * recipient list from the list passed in, and actually send it. When this function is
  * complete it will call the configured callback so the UI can be updated.
  */
 function sendMail(contactList, body, cb) {
-    var cList = ""
+    var msg = {
+        Message: {
+            Subject: "GDO SMS",
+            Body: {
+                ContentType: "Text",
+                Content: body + "\n-#-",
+            },
+            ToRecipients: [],
+        }
+    };
     for (let item of contactList) {
-        cList += '<t:Mailbox><t:EmailAddress>' + item + '</t:EmailAddress></t:Mailbox>';
+        msg.Message.ToRecipients.push({"EmailAddress": {"Address": item}});
     }
-    var request = wrapRequest(
-        '<m:CreateItem MessageDisposition="SendAndSaveCopy">' +
-        ' <m:SavedItemFolderId>' +
-        '  <t:DistinguishedFolderId Id="sentitems" />' +
-        ' </m:SavedItemFolderId>' +
-        ' <m:Items>' +
-        '  <t:Message>' +
-        '   <t:Subject>GDO SMS</t:Subject>' +
-        '   <t:Body BodyType="Text">' + body + '\n-#-</t:Body>' +
-        '   <t:ToRecipients>' + cList + '</t:ToRecipients>' +
-        '  </t:Message>' +
-        ' </m:Items>' +
-        '</m:CreateItem>'
-    );
-
-    Office.context.mailbox.makeEwsRequestAsync(request, function (result) {
-        console.log("SentMail:", result);
-        var response = $.parseXML(result.value);
-        var respCode = response.getElementsByTagName("m:ResponseCode")[0];
-        if (respCode.textContent.localeCompare("NoError") == 0) {
-            cb(true);
+    Office.context.mailbox.getCallbackTokenAsync({isRest: true}, function(result){
+        if (result.status === "succeeded") {
+            console.log("sending msg: ", JSON.stringify(msg));
+            //create a draft
+            $.ajax({
+                url: Office.context.mailbox.restUrl + "/v2.0/me/sendMail",
+                dataType: 'json',
+                contentType: 'application/json',
+                headers: { 'Authorization': 'Bearer ' + result.value },
+                type: "POST",
+                data: JSON.stringify(msg)
+            }).done(function(item) {
+                console.log("create mail ajax returned:", item);
+            }).fail(function(error) {
+                if (error.status != 202) {
+                    console.log("ajax failed:", error);
+                } //else it is 202, which is a success
+            });
         } else {
-            cb(false);
+            // Handle the error.
+            console.log("error happened:", result);
         }
     });
 }

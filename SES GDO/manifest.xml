@@ -111,7 +111,7 @@
       </bt:LongStrings>
     </Resources>
 
-  <!-- New outlook versions, and office.com -->
+   <!-- New outlook versions, and office.com -->
    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
      <Requirements>
        <bt:Sets DefaultMinVersion="1.3">
@@ -161,6 +161,33 @@
              </OfficeTab>
            </ExtensionPoint>
          </DesktopFormFactor>
+         <MobileFormFactor>
+           <FunctionFile resid="Commands.Url" />
+           <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
+             <!-- information on this extension point -->
+             <Group id="mobileMsgRead">
+               <Label resid="GroupLabel" />
+               <Control xsi:type="MobileButton" id="TaskPaneBtn">
+                 <Label resid="TaskpaneButton.Label" />
+                 <Icon xsi:type="bt:MobileIconList">
+                   <bt:Image size="25" scale="1" resid="Icon.32x32" />
+                   <bt:Image size="25" scale="2" resid="Icon.32x32" />
+                   <bt:Image size="25" scale="3" resid="Icon.32x32" />
+                   <bt:Image size="32" scale="1" resid="Icon.32x32" />
+                   <bt:Image size="32" scale="2" resid="Icon.32x32" />
+                   <bt:Image size="32" scale="3" resid="Icon.32x32" />
+                   <bt:Image size="48" scale="1" resid="Icon.80x80" />
+                   <bt:Image size="48" scale="2" resid="Icon.80x80" />
+                   <bt:Image size="48" scale="3" resid="Icon.80x80" />
+                 </Icon>
+                 <Action xsi:type="ShowTaskpane">
+                   <SourceLocation resid="Taskpane.Url" />
+                 </Action>
+               </Control>
+             </Group>
+           </ExtensionPoint>
+           <!-- possibly more ExtensionPoint elements -->
+         </MobileFormFactor>
        </Host>
      </Hosts>
      <Resources>
